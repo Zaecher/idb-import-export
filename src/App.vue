@@ -1,0 +1,158 @@
+<script setup lang="ts">
+import { openDB } from "idb";
+
+const toast = useToast();
+
+interface Database {
+  name: string;
+  keyPath: string;
+  storeName: string;
+  entries: number;
+}
+
+const databases = ref([
+  <Database>{
+    name: "Startpage",
+    keyPath: "timestamp",
+    storeName: "data",
+    entries: 0,
+  },
+  <Database>{
+    name: "project-time",
+    keyPath: "timestamp",
+    storeName: "data",
+    entries: 0,
+  },
+]);
+
+const importData = ref([]);
+const clearData = ref(true);
+const importFile = ref<File>();
+
+async function createDbConnection(
+  database: string,
+  keyPath: string,
+  store: string = "data",
+) {
+  const db = await openDB(database, 1, {
+    upgrade(db, _oldVersion, _newVersion, _transaction, _event) {
+      db.createObjectStore(store, { keyPath: keyPath });
+    },
+  });
+  return db;
+}
+
+function sendDownloadFile(basename: string, data: any) {
+  const timestamp = new Date().toISOString();
+  const jsonContent = encodeURI(
+    "data:application/json;charset=utf-8," + JSON.stringify(data),
+  );
+  var link = document.createElement("a");
+  link.setAttribute("href", jsonContent);
+  link.setAttribute("download", `${basename}-${timestamp}.json`);
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+}
+
+async function exportDatabase(database: Database) {
+  const db = await createDbConnection(
+    database.name,
+    database.keyPath,
+    database.storeName,
+  );
+  const data = await db.getAll(database.storeName);
+  sendDownloadFile(database.name, data);
+  toast.add(<Toast>{
+    title: `Exported data for ${database.name} with ${database.entries} entries`,
+  });
+}
+
+async function importDatabase(database: Database) {
+  const db = await createDbConnection(
+    database.name,
+    database.keyPath,
+    database.storeName,
+  );
+  if (clearData.value) {
+    await db.clear(database.storeName);
+  }
+  for (const entry of importData.value) {
+    await db.add(database.storeName, JSON.parse(JSON.stringify(entry)));
+  }
+  toast.add(<Toast>{
+    title: `Imported ${importData.value.length} entries into ${database.name}`,
+  });
+  importData.value = [];
+  importFile.value = undefined;
+}
+
+onMounted(async () => {
+  for (const database of databases.value) {
+    const db = await createDbConnection(
+      database.name,
+      database.keyPath,
+      database.storeName,
+    );
+    database.entries = await db.count(database.storeName);
+  }
+});
+
+watch(importFile, async (f) => {
+  if (f) {
+    const text = await f?.text();
+    importData.value = JSON.parse(text);
+  } else {
+    importData.value = [];
+  }
+});
+</script>
+
+<template>
+  <Suspense>
+    <UApp>
+      <UHeader title="idb import export" />
+      <UMain>
+        <UContainer class="py-5">
+          <UCard v-for="database in databases">
+            <template #header>
+              <h2>{{ database.name }}</h2>
+            </template>
+            <template #default>
+              <div class="flex gap-2 w-full">
+                <div class="flex flex-col flex-1">
+                  <UButton
+                    icon="fa7-solid:file-export"
+                    :label="`Export ${database.entries} entries`"
+                    color="info"
+                    @click="exportDatabase(database)"
+                  />
+                </div>
+                <div class="flex flex-col flex-1 gap-2">
+                  <UButton
+                    icon="fa7-solid:file-import"
+                    :label="`Import ${importData.length} entries`"
+                    color="success"
+                    @click="importDatabase(database)"
+                    :disabled="importData.length == 0"
+                  />
+                  <UFileUpload
+                    v-model="importFile"
+                    accept="application/json"
+                    label="Upload exported IndexedDB file"
+                    description="Only JSON format is supported"
+                  />
+                  <div v-if="importFile">
+                    {{ importFile.name }}
+                    {{ Math.round(importFile.size / 1024) }} kb
+                  </div>
+                  <UCheckbox v-model="clearData" label="Clear existing data" />
+                </div>
+              </div>
+            </template>
+          </UCard>
+        </UContainer>
+      </UMain>
+    </UApp>
+  </Suspense>
+</template>
