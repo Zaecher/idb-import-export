@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { SelectItem } from "@nuxt/ui";
 import { openDB } from "idb";
 
 const toast = useToast();
@@ -96,6 +97,14 @@ onMounted(async () => {
     );
     database.entries = await db.count(database.storeName);
   }
+
+  databaseItems.value = databases.value.map(
+    (d) =>
+      <SelectItem>{
+        label: `${d.name} (${d.entries} entries)`,
+        id: d.name,
+      },
+  );
 });
 
 watch(importFile, async (f) => {
@@ -106,6 +115,12 @@ watch(importFile, async (f) => {
     importData.value = [];
   }
 });
+
+const databaseItems = ref<SelectItem[]>([]);
+const selected = ref(databases.value[0].name);
+const database = computed(() =>
+  databases.value.find((d) => d.name === selected.value),
+);
 </script>
 
 <template>
@@ -114,12 +129,19 @@ watch(importFile, async (f) => {
       <UHeader title="idb import export" />
       <UMain>
         <UContainer class="py-5">
-          <UCard v-for="database in databases">
+          <UCard variant="subtle">
             <template #header>
-              <h2>{{ database.name }}</h2>
+              Select IndexedDB:
+              <USelect
+                icon="fa7-solid:database"
+                v-model="selected"
+                value-key="id"
+                :items="databaseItems"
+                class="w-80"
+              />
             </template>
             <template #default>
-              <div class="flex gap-2 w-full">
+              <div class="flex gap-2 w-full" v-if="database">
                 <div class="flex flex-col flex-1">
                   <UButton
                     icon="fa7-solid:file-export"
